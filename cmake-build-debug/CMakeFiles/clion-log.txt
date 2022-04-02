@@ -1,0 +1,23 @@
+/home/plusai/clion/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/home/plusai/clion/bin/ninja/linux/ninja -G Ninja /home/plusai/workspace/osqp
+-- We are on a Linux system
+-- Embedded is OFF
+-- CUDA support is OFF
+-- Printing is ON
+-- Profiling is ON
+-- User interrupt is ON
+-- Floats are OFF
+-- Long integers (64bit) are ON
+-- Debug mode is ON
+-- Code coverage is OFF
+-- MKL Pardiso: ON
+-- Using OSQP default algebra implementation
+CMake Error at lin_sys/direct/qdldl/CMakeLists.txt:2 (add_subdirectory):
+  The source directory
+
+    /home/plusai/workspace/osqp/lin_sys/direct/qdldl/qdldl_sources
+
+  does not contain a CMakeLists.txt file.
+
+
+-- Configuring incomplete, errors occurred!
+See also "/home/plusai/workspace/osqp/cmake-build-debug/CMakeFiles/CMakeOutput.log".

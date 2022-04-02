@@ -355,6 +355,7 @@ if (NOT PYTHON AND NOT MATLAB AND NOT R_LANG AND NOT EMBEDDED)
     # Create osqp shared library
     # NB: Add all the linear system solvers here
     add_library (osqp SHARED ${osqp_src} ${osqp_headers} ${osqp_objects} ${linsys_solvers})
+#    set_target_properties(osqp PROPERTIES OUTPUT_NAME "osqp-gpu")
 
     # Include directories
     target_include_directories(osqp PRIVATE
