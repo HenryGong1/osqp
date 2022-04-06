@@ -336,7 +336,7 @@ install(TARGETS osqpstatic
 # Install Headers
 # ----------------------------------------------
 
-install(FILES ${osqp_headers} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/osqp")
+install(FILES ${osqp_headers} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/osqpGPU")
 
 
 if (CUDA_SUPPORT)
