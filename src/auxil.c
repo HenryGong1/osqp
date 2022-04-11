@@ -4,7 +4,10 @@
 #include "lin_alg.h"
 #include "scaling.h"
 #include "util.h"
-
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <stdio.h>
+#include "../algebra_types.h"
 /***********************************************************
 * Auxiliary functions needed to compute ADMM iterations * *
 ***********************************************************/
@@ -174,9 +177,25 @@ void update_xz_tilde(OSQPSolver *solver, c_int admm_iter) {
 
   // Compute right-hand side
   compute_rhs(solver);
-
+//    c_float* test = malloc(sizeof(c_float)* 5);
+//    test[0] = 1.0f;
+//    cudaMemcpy(test, work->xtilde_view->d_val, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
+//    cudaMemcpy(test+2, work->ztilde_view->d_val, 3 *sizeof(c_float), cudaMemcpyDeviceToHost);
+//    for(int i=0; i< 5; i++){
+//      printf(" test[%d]: %f ", i, test[i]);
+//    }
+//    cudaMemcpy(test, work->data->q->d_val, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
+//    for(int i=0; i< 2; i++){
+//        printf(" q[%d]: %f ", i, test[i]);
+//    }
+//    printf("\n");
   // Solve linear system
+//    clock_t start, end;
+//    start = clock();
   work->linsys_solver->solve(work->linsys_solver, work->xz_tilde, admm_iter);
+//    end = clock();
+//    double dur = (double)(end - start) / CLOCKS_PER_SEC;
+//    printf("Time cost: %f \n", dur);
 }
 
 void update_x(OSQPSolver *solver) {
@@ -864,10 +883,16 @@ c_int check_termination(OSQPSolver *solver, c_int approximate) {
 
 #ifndef EMBEDDED
 
-c_int validate_data(const OSQPData *data) {
+c_int validate_data(const csc* P,
+                 const c_float* q,
+                 const csc* A,
+                 const c_float* l,
+                 const c_float* u,
+                 c_int m,
+                 c_int n) {
   c_int j;
 
-  if (!data) {
+  if (!P || !A) {
 # ifdef PRINTING
     c_eprint("Missing data");
 # endif /* ifdef PRINTING */
@@ -875,23 +900,23 @@ c_int validate_data(const OSQPData *data) {
   }
 
   // General dimensions Tests
-  if ((data->n <= 0) || (data->m < 0)) {
+  if ((n <= 0) || (m < 0)) {
 # ifdef PRINTING
     c_eprint("n must be positive and m nonnegative; n = %i, m = %i",
-             (int)data->n, (int)data->m);
+             (int)n, (int)m);
 # endif /* ifdef PRINTING */
     return 1;
   }
 
   // Matrix P
-  if (data->P->m != data->n) {
+  if (P->m != n) {
 # ifdef PRINTING
-    c_eprint("P does not have dimension n x n with n = %i", (int)data->n);
+    c_eprint("P does not have dimension n x n with n = %i", (int)n);
 # endif /* ifdef PRINTING */
     return 1;
   }
 
-  if (data->P->m != data->P->n) {
+  if (P->m != P->n) {
 # ifdef PRINTING
     c_eprint("P is not square");
 # endif /* ifdef PRINTING */
@@ -899,20 +924,20 @@ c_int validate_data(const OSQPData *data) {
   }
 
   // Matrix A
-  if ((data->A->m != data->m) || (data->A->n != data->n)) {
+  if ((A->m != m) || (A->n != n)) {
 # ifdef PRINTING
     c_eprint("A does not have dimension m x n with m = %i and n = %i",
-             (int)data->m, (int)data->n);
+             (int)m, (int)n);
 # endif /* ifdef PRINTING */
     return 1;
   }
 
   // Lower and upper bounds
-  for (j = 0; j < data->m; j++) {
-    if (data->l[j] > data->u[j]) {
+  for (j = 0; j < m; j++) {
+    if (l[j] > u[j]) {
 # ifdef PRINTING
       c_eprint("Lower bound at index %d is greater than upper bound: %.4e > %.4e",
-               (int)j, data->l[j], data->u[j]);
+               (int)j, l[j], u[j]);
 # endif /* ifdef PRINTING */
       return 1;
     }

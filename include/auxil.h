@@ -152,26 +152,25 @@ c_int check_termination(OSQPSolver *solver,
 
 # ifndef EMBEDDED
 
-// /**
-//  * Validate problem data
-//  * @param  P            Problem data (quadratic cost term, csc format)
-//  * @param  q            Problem data (linear cost term)
-//  * @param  A            Problem data (constraint matrix, csc format)
-//  * @param  l            Problem data (constraint lower bound)
-//  * @param  u            Problem data (constraint upper bound)
-//  * @param  m            Problem data (number of constraints)
-//  * @param  n            Problem data (number of variables)
-//  * @return      Exitflag to check
-//  */
-// c_int validate_data(const csc* P,
-//                     const c_float* q,
-//                     const csc* A,
-//                     const c_float* l,
-//                     const c_float* u,
-//                     c_int m,
-//                     c_int n);
+/**
+ * Validate problem data
+ * @param  P            Problem data (quadratic cost term, csc format)
+ * @param  q            Problem data (linear cost term)
+ * @param  A            Problem data (constraint matrix, csc format)
+ * @param  l            Problem data (constraint lower bound)
+ * @param  u            Problem data (constraint upper bound)
+ * @param  m            Problem data (number of constraints)
+ * @param  n            Problem data (number of variables)
+ * @return      Exitflag to check
+ */
+c_int validate_data(const csc* P,
+                    const c_float* q,
+                    const csc* A,
+                    const c_float* l,
+                    const c_float* u,
+                    c_int m,
+                    c_int n);
 
-c_int validate_data(const OSQPData *data);
 /**
  * Validate problem settings
  * @param  settings OSQPSettings to be validated

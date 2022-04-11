@@ -6,6 +6,9 @@
 #include "error.h"
 
 #ifndef EMBEDDED
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include "../algebra_types.h"
 # include "polish.h"
 #endif /* ifndef EMBEDDED */
 
@@ -18,8 +21,32 @@
 #endif /* ifndef EMBEDDED */
 
 
+// This will output the proper CUDA error strings in the event
+// that a CUDA host call returns an error
+#define checkCudaErrors(val) check((val), #val, __FILE__, __LINE__)
 
+// This will output the proper error string when calling cudaGetLastError
+#define getLastCudaError(msg) __getLastCudaError(msg, __FILE__, __LINE__)
 
+#define CHECK_CUDA(func)                                                       \
+{                                                                              \
+    cudaError_t status = (func);                                               \
+    if (status != cudaSuccess) {                                               \
+        printf("CUDA API failed at line %d with error: %s (%d)\n",             \
+               __LINE__, cudaGetErrorString(status), status);                  \
+        return EXIT_FAILURE;                                                   \
+    }                                                                          \
+}
+
+#define CHECK_CUSPARSE(func)                                                   \
+{                                                                              \
+    cusparseStatus_t status = (func);                                          \
+    if (status != CUSPARSE_STATUS_SUCCESS) {                                   \
+        printf("CUSPARSE API failed at line %d with error: %s (%d)\n",         \
+               __LINE__, cusparseGetErrorString(status), status);              \
+        return EXIT_FAILURE;                                                   \
+    }                                                                          \
+}
 /**********************
 * Main API Functions *
 **********************/
@@ -400,16 +427,34 @@ c_int osqp_solve(OSQPSolver *solver) {
   // Main ADMM algorithm
 
   max_iter = solver->settings->max_iter;
+//  c_float* test = malloc(sizeof(c_float)* 5);
+//  test[0] = 1.0f;
   for (iter = 1; iter <= max_iter; iter++) {
 
     // Update x_prev, z_prev (preallocated, no malloc)
     swap_vectors(&(work->x), &(work->x_prev));
     swap_vectors(&(work->z), &(work->z_prev));
 
+//      CHECK_CUDA(cudaMemcpy(test, work->x_prev->d_val, 2 *sizeof(c_float), cudaMemcpyDeviceToHost));
+//      CHECK_CUDA(cudaMemcpy(test+2, work->z_prev->d_val, 3 *sizeof(c_float), cudaMemcpyDeviceToHost));
+//      for(int i=0; i< 5; i++){
+//          printf(" test[%d]: %f ", i, test[i]);
+//      }
+//      printf("\n");
+//      CHECK_CUDA(cudaMemcpy(test, solver->work->xz_tilde->d_val, 5 *sizeof(c_float), cudaMemcpyDeviceToHost));
+//      for(int i=0; i< 5; i++){
+//          printf("%f ", test[i]);
+//      }
+//      printf("\n");
     /* ADMM STEPS */
     /* Compute \tilde{x}^{k+1}, \tilde{z}^{k+1} */
     update_xz_tilde(solver, iter);
-
+//    CHECK_CUDA(cudaMemcpy(test, solver->work->xz_tilde->d_val, 5 *sizeof(c_float), cudaMemcpyDeviceToHost));
+//    for(int i=0; i< 5; i++){
+//        printf("%f ", test[i]);
+//    }
+//    printf("\n");
+//    printf("\n");
     /* Compute x^{k+1} */
     update_x(solver);
 

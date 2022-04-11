@@ -22,7 +22,8 @@
 #include "cuda_malloc.h"
 
 #include "glob_opts.h"
-
+#include <cuda.h>
+#include<cuda_runtime.h>
 
 /*******************************************************************************
  *                           Private Functions                                 *
@@ -221,7 +222,25 @@ c_int init_linsys_solver_cudapcg(cudapcg_solver    **sp,
   /* No error */
   return 0;
 }
+#define CHECK_CUDA(func)                                                       \
+{                                                                              \
+    cudaError_t status = (func);                                               \
+    if (status != cudaSuccess) {                                               \
+        printf("CUDA API failed at line %d with error: %s (%d)\n",             \
+               __LINE__, cudaGetErrorString(status), status);                  \
+        return EXIT_FAILURE;                                                   \
+    }                                                                          \
+}
 
+#define CHECK_CUSPARSE(func)                                                   \
+{                                                                              \
+    cusparseStatus_t status = (func);                                          \
+    if (status != CUSPARSE_STATUS_SUCCESS) {                                   \
+        printf("CUSPARSE API failed at line %d with error: %s (%d)\n",         \
+               __LINE__, cusparseGetErrorString(status), status);              \
+        return EXIT_FAILURE;                                                   \
+    }                                                                          \
+}
 
 c_int solve_linsys_cudapcg(cudapcg_solver *s,
                            OSQPVectorf    *b,
@@ -231,7 +250,18 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
   c_float eps;
 
   /* Compute the RHS of the reduced KKT system and store it in s->d_rhs */
-  compute_rhs(s, b->d_val);
+//    c_float test_1 = 3.0f;
+//    test[0] = 1.0f;
+    compute_rhs(s, b->d_val);
+//    CHECK_CUDA(cudaMemcpy(&test, s->d_rhs, 1 * sizeof(c_float), cudaMemcpyDeviceToHost))
+//    for(int i =0 ;i < 1; i++){
+//        printf("%f ", test);
+//    }
+//    CHECK_CUDA(cudaMemcpy(&test_1, s->d_sigma, 1 * sizeof(c_float), cudaMemcpyDeviceToHost))
+//    for(int i =0 ;i < 1; i++){
+//        printf("sigma: %f ", test_1);
+//    }
+//    printf("\n");
 
   /* Compute the required solution precision */
   eps = compute_tolerance(s, admm_iter);
@@ -241,7 +271,12 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
 
   /* Copy the first part of the solution to b->d_val */
   cuda_vec_copy_d2d(b->d_val, s->d_x, s->n);
-
+//    c_float* test = malloc(sizeof(c_float)* 5);
+//    cudaMemcpy(test, s->d_x, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
+//    for(int i=0; i< 2; i++){
+//        printf(" x_title[%d]: %f ", i, test[i]);
+//    }
+//    printf("\n");
   if (!s->polish) {
     /* Compute d_z = A * d_x */
     if (s->m) cuda_mat_Axpy(s->A, s->d_x, b->d_val + s->n, 1.0, 0.0);

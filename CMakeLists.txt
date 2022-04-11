@@ -47,7 +47,7 @@ else()
 endif()
 
 # Is the CUDA support enabled?
-option (CUDA_SUPPORT "Enable CUDA support" OFF)
+option (CUDA_SUPPORT "Enable CUDA support" ON)
 message(STATUS "CUDA support is ${CUDA_SUPPORT}")
 
 # Is printing enabled?
@@ -315,7 +315,9 @@ target_include_directories(osqpstatic PRIVATE
                            ${algebra_impl_includes}
                            ${csc_tools_includes})
 
-
+if (CUDA_SUPPORT)
+    target_link_libraries (osqpstatic cublas cusparse)
+endif()
 # Declare include directories for the cmake exported target
 target_include_directories(osqpstatic
                            PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -339,9 +341,7 @@ install(TARGETS osqpstatic
 install(FILES ${osqp_headers} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/osqpGPU")
 
 
-if (CUDA_SUPPORT)
-    target_link_libraries (osqpstatic cublas cusparse)
-endif()
+
 
 
 if (MATLAB)
@@ -356,7 +356,7 @@ if (NOT PYTHON AND NOT MATLAB AND NOT R_LANG AND NOT EMBEDDED)
     # NB: Add all the linear system solvers here
     add_library (osqp SHARED ${osqp_src} ${osqp_headers} ${osqp_objects} ${linsys_solvers})
     set_target_properties(osqp PROPERTIES OUTPUT_NAME "osqpGPU")
-
+    target_link_libraries (osqp osqpstatic)
     # Include directories
     target_include_directories(osqp PRIVATE
                                ${linsys_solvers_includes}

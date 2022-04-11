@@ -1,7 +1,64 @@
 #include "osqp.h"
 #include <stdlib.h>
+#include "../algebra/cuda/include/csr_type.h"
+#include "../algebra/cuda/include/cuda_csr.h"
+#include "util.h"
+
+#include <cuda_runtime.h>
+#include <cuda.h>
+#include <cusolver_common.h>
+#include <cusolverDn.h>
+#include <cublas_api.h>
+
+#define CUSOLVER_CHECK(err)                                                                        \
+    do {                                                                                           \
+        cusolverStatus_t err_ = (err);                                                             \
+        if (err_ != CUSOLVER_STATUS_SUCCESS) {                                                     \
+            printf("cusolver error %d at %s:%d\n", err_, __FILE__, __LINE__);                      \
+        }                                                                                          \
+    }while(0)
+
+#define CUBLAS_CHECK(err)                                                                          \
+    do {                                                                                           \
+        cublasStatus_t err_ = (err);                                                               \
+        if (err_ != CUBLAS_STATUS_SUCCESS) {                                                       \
+            printf("cublas error %d at %s:%d\n", err_, __FILE__, __LINE__);                        \
+            throw std::runtime_error("cublas error");                                              \
+        }                                                                                          \
+    } while (0)
+
+// cublas API error checking
+#define CUSPARSE_CHECK(err)                                                                        \
+    do {                                                                                           \
+        cusparseStatus_t err_ = (err);                                                             \
+        if (err_ != CUSPARSE_STATUS_SUCCESS) {                                                     \
+            printf("cusparse error %d at %s:%d\n", err_, __FILE__, __LINE__);                      \
+            throw std::runtime_error("cusparse error");                                            \
+        }                                                                                          \
+    } while (0)
+
+#define CHECK_CUDA(func)                                                       \
+{                                                                              \
+    cudaError_t status = (func);                                               \
+    if (status != cudaSuccess) {                                               \
+        printf("CUDA API failed at line %d with error: %s (%d)\n",             \
+               __LINE__, cudaGetErrorString(status), status);                  \
+        return EXIT_FAILURE;                                                   \
+    }                                                                          \
+}
+
+#define CHECK_CUSPARSE(func)                                                   \
+{                                                                              \
+    cusparseStatus_t status = (func);                                          \
+    if (status != CUSPARSE_STATUS_SUCCESS) {                                   \
+        printf("CUSPARSE API failed at line %d with error: %s (%d)\n",         \
+               __LINE__, cusparseGetErrorString(status), status);              \
+        return EXIT_FAILURE;                                                   \
+    }                                                                          \
+}
 
 int main(void) {
+    c_int exitflag;
 
   /* Load problem data */
   c_float P_x[3] = { 4.0, 1.0, 2.0, };
@@ -19,8 +76,8 @@ int main(void) {
   c_int m = 3;
 
   /* Exitflag */
-  c_int exitflag;
 
+for(int i = 0; i< 10; i++) {
   /* Workspace, settings, matrices */
   OSQPSolver   *solver;
   OSQPSettings *settings;
@@ -28,25 +85,39 @@ int main(void) {
   csc *A = malloc(sizeof(csc));
 
   /* Populate matrices */
-  csc_set_data(A, m, n, A_nnz, A_x, A_i, A_p);
-  csc_set_data(P, n, n, P_nnz, P_x, P_i, P_p);
 
-  /* Set default settings */
-  settings = (OSQPSettings *)malloc(sizeof(OSQPSettings));
-  if (settings) osqp_set_default_settings(settings);
-  settings->polish = 1;
+      csc_set_data(A, m, n, A_nnz, A_x, A_i, A_p);
+      csc_set_data(P, n, n, P_nnz, P_x, P_i, P_p);
 
-  /* Setup workspace */
-  exitflag = osqp_setup(&solver, P, q, A, l, u, m, n, settings);
+      /* Set default settings */
+      settings = (OSQPSettings *) malloc(sizeof(OSQPSettings));
+      if (settings) osqp_set_default_settings(settings);
+      settings->polish = 1;
+      clock_t start, end;
+      /* Setup workspace */
+      start = clock();
+      exitflag = osqp_setup(&solver, P, q, A, l, u, m, n, settings);
+      end = clock();
+      double dur = (double) (end - start) / CLOCKS_PER_SEC;
+      printf("Setup Timecost: %f\n ", dur);
+      /* Solve Problem */
 
-  /* Solve Problem */
-  osqp_solve(solver);
+      start = clock();
+      osqp_solve(solver);
+      end = clock();
+      dur = (double) (end - start) / CLOCKS_PER_SEC;
+      printf("Solve Time cost: %f\n ", dur);
 
-  /* Clean workspace */
-  osqp_cleanup(solver);
-  free(A);
-  free(P);
-  free(settings);
+      /* Clean workspace */
+      start = clock();
+      osqp_cleanup(solver);
+      free(A);
+      free(P);
+      free(settings);
+      end = clock();
+      dur = (double) (end - start) / CLOCKS_PER_SEC;
+      printf("Free Time cost: %f\n ", dur);
+  }
 
   return exitflag;
 }
