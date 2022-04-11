@@ -864,103 +864,61 @@ c_int check_termination(OSQPSolver *solver, c_int approximate) {
 
 #ifndef EMBEDDED
 
-c_int validate_data(const csc* P,
-                    const c_float* q,
-                    const csc* A,
-                    const c_float* l,
-                    const c_float* u,
-                    c_int m,
-                    c_int n) {
-  c_int j, ptr;
+c_int validate_data(const OSQPData *data) {
+  c_int j;
 
-  if (!P) {
+  if (!data) {
 # ifdef PRINTING
-    c_eprint("Missing quadratic cost matrix P");
-# endif
-    return 1;
-  }
-
-  if (!A) {
-# ifdef PRINTING
-    c_eprint("Missing constraint matrix A");
-# endif
-    return 1;
-  }
-
-  if (!q) {
-# ifdef PRINTING
-    c_eprint("Missing linear cost vector q");
-# endif
-    return 1;
-  }
-
-  if (!l) {
-# ifdef PRINTING
-    c_eprint("Missing lower bound vector l");
-# endif
-    return 1;
-  }
-
-  if (!u) {
-# ifdef PRINTING
-    c_eprint("Missing upper bound vector u");
-# endif
+    c_eprint("Missing data");
+# endif /* ifdef PRINTING */
     return 1;
   }
 
   // General dimensions Tests
-  if ((n <= 0) || (m < 0)) {
+  if ((data->n <= 0) || (data->m < 0)) {
 # ifdef PRINTING
     c_eprint("n must be positive and m nonnegative; n = %i, m = %i",
-             (int)n, (int)m);
+             (int)data->n, (int)data->m);
 # endif /* ifdef PRINTING */
     return 1;
   }
 
   // Matrix P
-  if (P->m != n) {
+  if (data->P->m != data->n) {
 # ifdef PRINTING
-    c_eprint("P does not have dimension n x n with n = %i", (int)n);
+    c_eprint("P does not have dimension n x n with n = %i", (int)data->n);
 # endif /* ifdef PRINTING */
     return 1;
   }
 
-  if (P->m != P->n) {
+  if (data->P->m != data->P->n) {
 # ifdef PRINTING
     c_eprint("P is not square");
 # endif /* ifdef PRINTING */
     return 1;
   }
 
-  for (j = 0; j < n; j++) { // COLUMN
-    for (ptr = P->p[j]; ptr < P->p[j + 1]; ptr++) {
-      if (P->i[ptr] > j) {  // if ROW > COLUMN
-# ifdef PRINTING
-        c_eprint("P is not upper triangular");
-# endif /* ifdef PRINTING */
-        return 1;
-      }
-    }
-  }
-
   // Matrix A
-  if ((A->m != m) || (A->n != n)) {
+  if ((data->A->m != data->m) || (data->A->n != data->n)) {
 # ifdef PRINTING
-    c_eprint("A does not have dimension %i x %i", (int)m, (int)n);
+    c_eprint("A does not have dimension m x n with m = %i and n = %i",
+             (int)data->m, (int)data->n);
 # endif /* ifdef PRINTING */
     return 1;
   }
 
   // Lower and upper bounds
-  for (j = 0; j < m; j++) {
-    if (l[j] > u[j]) {
+  for (j = 0; j < data->m; j++) {
+    if (data->l[j] > data->u[j]) {
 # ifdef PRINTING
       c_eprint("Lower bound at index %d is greater than upper bound: %.4e > %.4e",
-               (int)j, l[j], u[j]);
+               (int)j, data->l[j], data->u[j]);
 # endif /* ifdef PRINTING */
       return 1;
     }
   }
+
+  // TODO: Complete with other checks
 
   return 0;
 }
