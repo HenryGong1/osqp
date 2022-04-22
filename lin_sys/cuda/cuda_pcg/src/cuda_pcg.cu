@@ -252,11 +252,11 @@ int linearSolverCHOL(cusolverDnHandle_t handle, c_int n, c_float *Acopy, int lda
     int h_info = 0;
     cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
 
-    CUSOLVER_CHECK(cusolverDnDpotrf_bufferSize(handle, uplo, n, (double*)Acopy, lda, &bufferSize));
+    CUSOLVER_CHECK(cusolverDnSpotrf_bufferSize(handle, uplo, n, (float*)Acopy, lda, &bufferSize));
 
     CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&buffer, sizeof(double)*bufferSize));
-    CUDA_CHECK(cudaMalloc(&A, sizeof(double)*lda*n));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(float)*bufferSize));
+    CUDA_CHECK(cudaMalloc(&A, sizeof(float)*lda*n));
 
 
     // prepare a copy of A because potrf will overwrite A with L
@@ -264,7 +264,7 @@ int linearSolverCHOL(cusolverDnHandle_t handle, c_int n, c_float *Acopy, int lda
     CUDA_CHECK(cudaMemset(info, 0, sizeof(int)));
 
 
-    CUSOLVER_CHECK(cusolverDnDpotrf(handle, uplo, n, (double*)A, lda, (double*)buffer, bufferSize, info));
+    CUSOLVER_CHECK(cusolverDnSpotrf(handle, uplo, n, (float*)A, lda, (float*)buffer, bufferSize, info));
 
     CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
 
@@ -274,7 +274,7 @@ int linearSolverCHOL(cusolverDnHandle_t handle, c_int n, c_float *Acopy, int lda
 
     CUDA_CHECK(cudaMemcpy(x, b, sizeof(c_float)*n, cudaMemcpyDeviceToDevice));
 
-    CUSOLVER_CHECK(cusolverDnDpotrs(handle, uplo, n, 1, (double*)A, lda, (double*)x, n, info));
+    CUSOLVER_CHECK(cusolverDnSpotrs(handle, uplo, n, 1, (float*)A, lda, (float*)x, n, info));
 
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -296,28 +296,28 @@ int linearSolverLU(cusolverDnHandle_t handle,int n,const c_float *Acopy,int lda,
     int *ipiv = NULL; // pivoting sequence
     int h_info = 0;
 
-    CUSOLVER_CHECK(cusolverDnDgetrf_bufferSize(handle, n, n, (double*)Acopy, lda, &bufferSize));
+    CUSOLVER_CHECK(cusolverDnSgetrf_bufferSize(handle, n, n, (float*)Acopy, lda, &bufferSize));
 
     CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&buffer, sizeof(double)*bufferSize));
-    CUDA_CHECK(cudaMalloc(&A, sizeof(double)*lda*n));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(float)*bufferSize));
+    CUDA_CHECK(cudaMalloc(&A, sizeof(float)*lda*n));
     CUDA_CHECK(cudaMalloc(&ipiv, sizeof(int)*n));
 
 
     // prepare a copy of A because getrf will overwrite A with L
-    CUDA_CHECK(cudaMemcpy(A, Acopy, sizeof(double)*lda*n, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(A, Acopy, sizeof(float)*lda*n, cudaMemcpyDeviceToDevice));
     CUDA_CHECK(cudaMemset(info, 0, sizeof(int)));
 
 
-    CUSOLVER_CHECK(cusolverDnDgetrf(handle, n, n, (double*)A, lda, (double*)buffer, ipiv, info));
+    CUSOLVER_CHECK(cusolverDnSgetrf(handle, n, n, (float*)A, lda, (float*)buffer, ipiv, info));
     CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
 
     if ( 0 != h_info ){
         fprintf(stderr, "Error: LU factorization failed\n");
     }
 
-    CUDA_CHECK(cudaMemcpy(x, b, sizeof(double)*n, cudaMemcpyDeviceToDevice));
-    CUSOLVER_CHECK(cusolverDnDgetrs(handle, CUBLAS_OP_N, n, 1, (double*)A, lda, ipiv, (double*)x, n, info));
+    CUDA_CHECK(cudaMemcpy(x, b, sizeof(float)*n, cudaMemcpyDeviceToDevice));
+    CUSOLVER_CHECK(cusolverDnSgetrs(handle, CUBLAS_OP_N, n, 1, (float*)A, lda, ipiv, (float*)x, n, info));
     CUDA_CHECK(cudaDeviceSynchronize());
 
     if (info  ) { CUDA_CHECK(cudaFree(info  )); }
@@ -343,16 +343,16 @@ int linearSolverQR(
     c_float *A = NULL;
     c_float *tau = NULL;
     int h_info = 0;
-    const double one = 1.0;
+    const float one = 1.0;
 
     CUBLAS_CHECK(cublasCreate(&cublasHandle));
 
-    CUSOLVER_CHECK(cusolverDnDgeqrf_bufferSize(handle, n, n, (double*)Acopy, lda, &bufferSize));
+    CUSOLVER_CHECK(cusolverDnSgeqrf_bufferSize(handle, n, n, (float*)Acopy, lda, &bufferSize));
 
     CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&buffer, sizeof(double)*bufferSize));
-    CUDA_CHECK(cudaMalloc(&A, sizeof(double)*lda*n));
-    CUDA_CHECK(cudaMalloc ((void**)&tau, sizeof(double)*n));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(c_float)*bufferSize));
+    CUDA_CHECK(cudaMalloc(&A, sizeof(c_float)*lda*n));
+    CUDA_CHECK(cudaMalloc ((void**)&tau, sizeof(c_float)*n));
 
 // prepare a copy of A because getrf will overwrite A with L
     CUDA_CHECK(cudaMemcpy(A, Acopy, sizeof(c_float)*lda*n, cudaMemcpyDeviceToDevice));
@@ -361,7 +361,7 @@ int linearSolverQR(
 
 
 // compute QR factorization
-    CUSOLVER_CHECK(cusolverDnDgeqrf(handle, n, n, (double*)A, lda, (double*)tau, (double*)buffer, bufferSize, info));
+    CUSOLVER_CHECK(cusolverDnSgeqrf(handle, n, n, (float*)A, lda, (float*)tau, (float*)buffer, bufferSize, info));
 
     CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
 
@@ -372,24 +372,24 @@ int linearSolverQR(
     CUDA_CHECK(cudaMemcpy(x, b, sizeof(c_float)*n, cudaMemcpyDeviceToDevice));
 
     // compute Q^T*b
-    CUSOLVER_CHECK(cusolverDnDormqr(
+    CUSOLVER_CHECK(cusolverDnSormqr(
             handle,
             CUBLAS_SIDE_LEFT,
             CUBLAS_OP_T,
             n,
             1,
             n,
-            (double*)A,
+            (float*)A,
             lda,
-            (double*)tau,
-            (double*)x,
+            (float*)tau,
+            (float*)x,
             n,
-            (double*)buffer,
+            (float*)buffer,
             bufferSize,
             info));
 
     // x = R \ Q^T*b
-    CUBLAS_CHECK(cublasDtrsm(
+    CUBLAS_CHECK(cublasStrsm(
             cublasHandle,
             CUBLAS_SIDE_LEFT,
             CUBLAS_FILL_MODE_UPPER,
@@ -398,9 +398,9 @@ int linearSolverQR(
             n,
             1,
             &one,
-            (double*)A,
+            (float*)A,
             lda,
-            (double*)x,
+            (float*)x,
             n));
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -445,6 +445,26 @@ c_int linearSolverLDL(cusolverDnHandle_t handle,
     if ( 0 != h_info ){
         fprintf(stderr, "Error: LDL factorization failed\n");
     }
+//    c_float *fack_news;
+//    if(n ==5) {
+//        c_float t[] = {
+//                    1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+//                    0.0f, 2.0f, 0.0f, 0.0f, 0.0f,
+//                    0.0f, 0.0f, 3.0f, 0.0f, 0.0f,
+//                    0.0f, 0.0f, 0.0f, 4.0f, 0.0f,
+//                    0.0f, 0.0f, 0.0f, 0.0f, 5.0f
+//                    };
+//        fack_news = t;
+//    }else if(n ==4){
+//        c_float t[] = {
+//                1.0f, 0.0f, 0.0f, 0.0f,
+//                0.0f, 2.0f, 0.0f, 0.0f,
+//                0.0f, 0.0f, 3.0f, 0.0f,
+//                0.0f, 0.0f, 0.0f, 4.0f,
+//                };
+//        fack_news = t;
+//    }
+//    CUDA_CHECK(cudaMemcpy(A, fack_news, sizeof(c_float) * n * n, cudaMemcpyHostToDevice));
     c_float* tmp, *test;
     CUDA_CHECK(cudaMalloc((void**)&tmp, sizeof(c_float) * n *n ));
     test = (c_float*)malloc(sizeof(c_float) * n *n);
@@ -456,10 +476,8 @@ c_int linearSolverLDL(cusolverDnHandle_t handle,
         }
         printf("\n");
     }
-
-
     CUDA_CHECK(cudaMemcpy(x, b, sizeof(c_float)*n, cudaMemcpyDeviceToDevice));
-    CUSOLVER_CHECK(cusolverDnSsytrs(handle, oplo, n, 1, A, lda, ipiv, x, n, buffer, bufferSize, info));
+    CUSOLVER_CHECK(cusolverDnSsytrs(handle, oplo, n, 1, A, lda, ipiv, x, n, buffer, bufferSize, info));// calculated but not calculated at all
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
 
@@ -493,6 +511,7 @@ c_float* cuda_ldlt_solve(c_float *A, c_float* b, int m){
 
     c_float *x;
     cudaMalloc((void**)&x, sizeof(c_float)*m);
+//    linearSolverQR(handle, m, A, m, b, x);
     linearSolverLDL(handle, m, A, m, b, x);
     return x;
 }
@@ -502,7 +521,7 @@ c_int cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
     c_float *P_dev = csrMats2Dense(s->P);
     c_float* A_dev = csrMats2Dense(s->A);
     c_float* At_dev = csrMats2Dense(s->At);
-    c_float rho = 1.0f/(*s->h_rho); //-(rho)^-1
+    c_float rho = -1.0f/(*s->h_rho); //-(rho)^-1
     size_t mat_size = s->m + s->n;
 
     c_float *mat_dev = (c_float*)malloc(mat_size * mat_size * sizeof(c_float));
