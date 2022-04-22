@@ -316,7 +316,7 @@ target_include_directories(osqpstatic PRIVATE
                            ${csc_tools_includes})
 
 if (CUDA_SUPPORT)
-    target_link_libraries (osqpstatic cublas cusparse)
+    target_link_libraries (osqpstatic cublas cusparse cusolver)
 endif()
 # Declare include directories for the cmake exported target
 target_include_directories(osqpstatic

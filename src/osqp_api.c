@@ -448,7 +448,7 @@ c_int osqp_solve(OSQPSolver *solver) {
 //      printf("\n");
     /* ADMM STEPS */
     /* Compute \tilde{x}^{k+1}, \tilde{z}^{k+1} */
-    update_xz_tilde(solver, iter);
+    update_xz_tilde(solver, iter);// The most important one that I need to work with
 //    CHECK_CUDA(cudaMemcpy(test, solver->work->xz_tilde->d_val, 5 *sizeof(c_float), cudaMemcpyDeviceToHost));
 //    for(int i=0; i< 5; i++){
 //        printf("%f ", test[i]);

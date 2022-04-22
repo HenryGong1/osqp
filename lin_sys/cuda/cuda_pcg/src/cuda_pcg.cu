@@ -24,9 +24,49 @@
 #include "cuda_wrapper.h"
 #include "helper_cuda.h"    /* --> checkCudaErrors */
 
+#include <cusolverDn.h>
+#include <stdio.h>
+#include <vector>
 #ifdef __cplusplus
 extern "C" {extern CUDA_Handle_t *CUDA_handle;}
 #endif
+
+// CUDA API error checking
+#define CUDA_CHECK(err)                                                                            \
+    do {                                                                                           \
+        cudaError_t err_ = (err);                                                                  \
+        if (err_ != cudaSuccess) {                                                                 \
+            printf("CUDA error %d at %s:%d\n", err_, __FILE__, __LINE__);                          \
+        }                                                                                          \
+    } while (0)
+
+// cusolver API error checking
+#define CUSOLVER_CHECK(err)                                                                        \
+    do {                                                                                           \
+        cusolverStatus_t err_ = (err);                                                             \
+        if (err_ != CUSOLVER_STATUS_SUCCESS) {                                                     \
+            printf("cusolver error %d at %s:%d\n", err_, __FILE__, __LINE__);                      \
+        }                                                                                          \
+    } while (0)
+
+// cublas API error checking
+#define CUBLAS_CHECK(err)                                                                          \
+    do {                                                                                           \
+        cublasStatus_t err_ = (err);                                                               \
+        if (err_ != CUBLAS_STATUS_SUCCESS) {                                                       \
+            printf("cublas error %d at %s:%d\n", err_, __FILE__, __LINE__);                        \
+        }                                                                                          \
+    } while (0)
+
+// cublas API error checking
+#define CUSPARSE_CHECK(err)                                                                        \
+    do {                                                                                           \
+        cusparseStatus_t err_ = (err);                                                             \
+        if (err_ != CUSPARSE_STATUS_SUCCESS) {                                                     \
+            printf("cusparse error %d at %s:%d\n", err_, __FILE__, __LINE__);                      \
+        }                                                                                          \
+    } while (0)
+
 
 /*******************************************************************************
  *                              GPU Kernels                                    *
@@ -114,10 +154,396 @@ static void mat_vec_prod(cudapcg_solver *s,
                                   CUDA_FLOAT, CUDA_FLOAT, A->buffer));
 }
 
+/**
+ * For do not destroy the down-stream calculation, we copy the original csr matrix and convert it into coo format.
+ * Then, we map these coo matricies to a huge dense matrix.
+ * @param s
+ */
+c_float* csrMats2Dense(csr *s){
+    csr* P = s;
+    int m = s->m;
+    int n = s->n;
+    int nnz = s->nnz;
+    c_float *ptr;
+    c_float *vals = (c_float*)malloc(sizeof(c_float) * P->nnz);
+    checkCudaErrors(cudaMalloc((void **)&ptr, sizeof(P->val) * P->nnz));
+    checkCudaErrors(cudaMemcpy(ptr, P->val, P->nnz * sizeof(c_float), cudaMemcpyDeviceToDevice));
+    checkCudaErrors(cudaMemcpy(vals, ptr, P->nnz * sizeof(c_float), cudaMemcpyDeviceToHost));
+//    for(int i = 0; i<P->nnz; i++){
+//        printf("CSR val: %f ", vals[i]);
+//    }
+//    printf("\n");
+    c_int *rowPtr, *colIdx;
+    c_int row[nnz], col[nnz];
+    checkCudaErrors(cudaMalloc((void**)&rowPtr, sizeof(c_int)*(P->nnz)));
+    checkCudaErrors(cudaMalloc((void**)&colIdx, sizeof (c_int)*P->nnz));
+
+    checkCudaErrors(cudaMemcpy(rowPtr, P->row_ind, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToDevice));
+    checkCudaErrors(cudaMemcpy(&row, rowPtr, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToHost));
+//    for(int i = 0; i<P->nnz; i++){
+//        printf("rowPtr: %d ", row[i]);
+//    }
+//    printf("\n");
+    checkCudaErrors(cudaMemcpy(colIdx, P->col_ind, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToDevice));
+    checkCudaErrors(cudaMemcpy(&col, colIdx, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToHost));
+//    for(int i = 0; i<P->nnz; i++){
+//        printf("colIdx: %d ", col[i]);
+//    }
+//    printf("\n");
+    c_float* mat = (c_float*)malloc(sizeof(c_float) * m * n);
+    memset(mat, 0.0f, m * n * sizeof(c_float));
+    for(int i = 0; i<nnz; i++){
+        mat[row[i]*n+col[i]] = vals[i];
+    }
+
+//    for(int i = 0; i< m; i++){
+//        for(int j=0; j<n;j++){
+//            printf("P[%d][%d]: %f ", i, j, mat[i*n + j]);
+//        }
+//        printf("\n");
+//    }
+//    printf("\n");
+    return mat;
+}
+/**
+ * This function performs assignments from source matrix to target matrix
+ * @param dst target matrix
+ * @param src source matrix
+ * @param dst_m rows of the target matrix
+ * @param dst_n cols of the target matrix
+ * @param m rows of the source matrix
+ * @param n col of the source matrix
+ * @param offset_x
+ * @param offset_y
+ */
+c_int mergeMatrices(c_float* dst, c_float* src,int dst_m, int dst_n, int m, int n, int offset_x, int offset_y){
+    int row = offset_x;
+    int col = offset_y;
+//    assert(dst_m >= m +offset_x && dst_n >= n + offset_y);
+    for(int i = 0; i< m; i++){
+        for(int j =0; j<n;j++){
+
+            dst[row * dst_n + col + j] = src[i * n + j];
+        }
+        row++;
+    }
+    return 0;
+}
+void mergeScalar2Matrix(c_float* dst, c_float scalar, int dst_m, int dst_n, int n, int offset_x, int offset_y){
+    int row = offset_x;
+    int col = offset_y;
+
+    for(int i = 0; i<n; i++){
+        dst[row*dst_n + col + i] = scalar;
+        row++;
+    }
+}
 
 /*******************************************************************************
  *                              API Functions                                  *
  *******************************************************************************/
+int linearSolverCHOL(cusolverDnHandle_t handle, c_int n, c_float *Acopy, int lda,
+        c_float *b, c_float *x){
+
+    int bufferSize = 0;
+    int *info = NULL;
+    c_float *buffer = NULL;
+    c_float *A = NULL;
+    int h_info = 0;
+    cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+
+    CUSOLVER_CHECK(cusolverDnDpotrf_bufferSize(handle, uplo, n, (double*)Acopy, lda, &bufferSize));
+
+    CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(double)*bufferSize));
+    CUDA_CHECK(cudaMalloc(&A, sizeof(double)*lda*n));
+
+
+    // prepare a copy of A because potrf will overwrite A with L
+    CUDA_CHECK(cudaMemcpy(A, Acopy, sizeof(c_float)*lda*n, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemset(info, 0, sizeof(int)));
+
+
+    CUSOLVER_CHECK(cusolverDnDpotrf(handle, uplo, n, (double*)A, lda, (double*)buffer, bufferSize, info));
+
+    CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
+
+    if ( 0 != h_info ){
+        fprintf(stderr, "Error: Cholesky factorization failed\n");
+    }
+
+    CUDA_CHECK(cudaMemcpy(x, b, sizeof(c_float)*n, cudaMemcpyDeviceToDevice));
+
+    CUSOLVER_CHECK(cusolverDnDpotrs(handle, uplo, n, 1, (double*)A, lda, (double*)x, n, info));
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+
+    if (info  ) { CUDA_CHECK(cudaFree(info)); }
+    if (buffer) { CUDA_CHECK(cudaFree(buffer)); }
+    if (A     ) { CUDA_CHECK(cudaFree(A)); }
+
+    return 0;
+}
+
+int linearSolverLU(cusolverDnHandle_t handle,int n,const c_float *Acopy,int lda,
+                   const c_float *b,c_float *x)
+{
+    int bufferSize = 0;
+    int *info = NULL;
+    c_float *buffer = NULL;
+    c_float *A = NULL;
+    int *ipiv = NULL; // pivoting sequence
+    int h_info = 0;
+
+    CUSOLVER_CHECK(cusolverDnDgetrf_bufferSize(handle, n, n, (double*)Acopy, lda, &bufferSize));
+
+    CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(double)*bufferSize));
+    CUDA_CHECK(cudaMalloc(&A, sizeof(double)*lda*n));
+    CUDA_CHECK(cudaMalloc(&ipiv, sizeof(int)*n));
+
+
+    // prepare a copy of A because getrf will overwrite A with L
+    CUDA_CHECK(cudaMemcpy(A, Acopy, sizeof(double)*lda*n, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemset(info, 0, sizeof(int)));
+
+
+    CUSOLVER_CHECK(cusolverDnDgetrf(handle, n, n, (double*)A, lda, (double*)buffer, ipiv, info));
+    CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
+
+    if ( 0 != h_info ){
+        fprintf(stderr, "Error: LU factorization failed\n");
+    }
+
+    CUDA_CHECK(cudaMemcpy(x, b, sizeof(double)*n, cudaMemcpyDeviceToDevice));
+    CUSOLVER_CHECK(cusolverDnDgetrs(handle, CUBLAS_OP_N, n, 1, (double*)A, lda, ipiv, (double*)x, n, info));
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    if (info  ) { CUDA_CHECK(cudaFree(info  )); }
+    if (buffer) { CUDA_CHECK(cudaFree(buffer)); }
+    if (A     ) { CUDA_CHECK(cudaFree(A)); }
+    if (ipiv  ) { CUDA_CHECK(cudaFree(ipiv));}
+
+    return 0;
+}
+
+int linearSolverQR(
+        cusolverDnHandle_t handle,
+        int n,
+        const c_float *Acopy,
+        int lda,
+        const c_float *b,
+        c_float *x)
+{
+    cublasHandle_t cublasHandle = NULL; // used in residual evaluation
+    int bufferSize = 0;
+    int *info = NULL;
+    c_float *buffer = NULL;
+    c_float *A = NULL;
+    c_float *tau = NULL;
+    int h_info = 0;
+    const double one = 1.0;
+
+    CUBLAS_CHECK(cublasCreate(&cublasHandle));
+
+    CUSOLVER_CHECK(cusolverDnDgeqrf_bufferSize(handle, n, n, (double*)Acopy, lda, &bufferSize));
+
+    CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(double)*bufferSize));
+    CUDA_CHECK(cudaMalloc(&A, sizeof(double)*lda*n));
+    CUDA_CHECK(cudaMalloc ((void**)&tau, sizeof(double)*n));
+
+// prepare a copy of A because getrf will overwrite A with L
+    CUDA_CHECK(cudaMemcpy(A, Acopy, sizeof(c_float)*lda*n, cudaMemcpyDeviceToDevice));
+
+    CUDA_CHECK(cudaMemset(info, 0, sizeof(int)));
+
+
+// compute QR factorization
+    CUSOLVER_CHECK(cusolverDnDgeqrf(handle, n, n, (double*)A, lda, (double*)tau, (double*)buffer, bufferSize, info));
+
+    CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
+
+    if ( 0 != h_info ){
+        fprintf(stderr, "Error: LU factorization failed\n");
+    }
+
+    CUDA_CHECK(cudaMemcpy(x, b, sizeof(c_float)*n, cudaMemcpyDeviceToDevice));
+
+    // compute Q^T*b
+    CUSOLVER_CHECK(cusolverDnDormqr(
+            handle,
+            CUBLAS_SIDE_LEFT,
+            CUBLAS_OP_T,
+            n,
+            1,
+            n,
+            (double*)A,
+            lda,
+            (double*)tau,
+            (double*)x,
+            n,
+            (double*)buffer,
+            bufferSize,
+            info));
+
+    // x = R \ Q^T*b
+    CUBLAS_CHECK(cublasDtrsm(
+            cublasHandle,
+            CUBLAS_SIDE_LEFT,
+            CUBLAS_FILL_MODE_UPPER,
+            CUBLAS_OP_N,
+            CUBLAS_DIAG_NON_UNIT,
+            n,
+            1,
+            &one,
+            (double*)A,
+            lda,
+            (double*)x,
+            n));
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    if (cublasHandle) { CUBLAS_CHECK(cublasDestroy(cublasHandle)); }
+    if (info  ) { CUDA_CHECK(cudaFree(info  )); }
+    if (buffer) { CUDA_CHECK(cudaFree(buffer)); }
+    if (A     ) { CUDA_CHECK(cudaFree(A)); }
+    if (tau   ) { CUDA_CHECK(cudaFree(tau)); }
+
+    return 0;
+}
+
+c_int linearSolverLDL(cusolverDnHandle_t handle,
+                      int n,
+                      const c_float *Acopy,
+                      int lda,
+                      const c_float *b,
+                      c_float *x){
+    int bufferSize = 0;
+    int *info = NULL;
+    c_float *buffer = NULL;
+    c_float *A = NULL;
+    int *ipiv = NULL; // pivoting sequence
+    int h_info = 0;
+
+    const cublasFillMode_t oplo = CUBLAS_FILL_MODE_LOWER;
+    /*Malloc space for solving problems*/
+    CUSOLVER_CHECK(cusolverDnSsytrf_bufferSize(handle, n, (float*)Acopy, lda, &bufferSize));
+
+    CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(c_float)* 2 * bufferSize));
+    CUDA_CHECK(cudaMalloc(&A, sizeof(c_float)*lda*n));
+    CUDA_CHECK(cudaMalloc(&ipiv, sizeof(int)*n));
+
+    // prepare a copy of A because getrf will overwrite A with L
+    CUDA_CHECK(cudaMemcpy(A, Acopy, sizeof(c_float)*lda*n, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemset(info, 0, sizeof(int)));
+
+    CUSOLVER_CHECK(cusolverDnSsytrf(handle, oplo, n, A, lda, ipiv, buffer, n, info));
+    CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
+
+    if ( 0 != h_info ){
+        fprintf(stderr, "Error: LDL factorization failed\n");
+    }
+    c_float* tmp, *test;
+    CUDA_CHECK(cudaMalloc((void**)&tmp, sizeof(c_float) * n *n ));
+    test = (c_float*)malloc(sizeof(c_float) * n *n);
+    CUDA_CHECK(cudaMemcpy(tmp, A, sizeof(c_float) * n *n, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(test, tmp, sizeof(c_float) * n *n, cudaMemcpyDeviceToHost));
+    for(int i = 0; i <n ;i++){
+        for(int j = 0; j < n; j++){
+            printf("A[%d][%d]: %f", i, j, test[i*n+j]);
+        }
+        printf("\n");
+    }
+
+
+    CUDA_CHECK(cudaMemcpy(x, b, sizeof(c_float)*n, cudaMemcpyDeviceToDevice));
+    CUSOLVER_CHECK(cusolverDnSsytrs(handle, oplo, n, 1, A, lda, ipiv, x, n, buffer, bufferSize, info));
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
+
+    if ( 0 != h_info ){
+        fprintf(stderr, "Error: LDL factorization failed\n");
+    }
+
+    if (info  ) { CUDA_CHECK(cudaFree(info  )); }
+    if (buffer) { CUDA_CHECK(cudaFree(buffer)); }
+    if (A     ) { CUDA_CHECK(cudaFree(A)); }
+    if (ipiv  ) { CUDA_CHECK(cudaFree(ipiv));}
+}
+
+/**
+* This function performs solving the following linear system using LDLT method:
+*  Ax = b
+*  We assume the coefficient matrix is symmetrical.
+* @param A
+* @param b
+* @return solved answer: x
+*/
+c_float* cuda_ldlt_solve(c_float *A, c_float* b, int m){
+    cusolverDnHandle_t handle = NULL;
+    cublasHandle_t cublasHandle = NULL; // used in residual evaluation
+    cudaStream_t stream = NULL;
+
+    CUSOLVER_CHECK(cusolverDnCreate(&handle));
+    CUBLAS_CHECK(cublasCreate(&cublasHandle));
+    CUDA_CHECK(cudaStreamCreate(&stream));
+    CUSOLVER_CHECK(cusolverDnSetStream(handle, stream));
+
+    c_float *x;
+    cudaMalloc((void**)&x, sizeof(c_float)*m);
+    linearSolverLDL(handle, m, A, m, b, x);
+    return x;
+}
+
+c_int cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
+
+    c_float *P_dev = csrMats2Dense(s->P);
+    c_float* A_dev = csrMats2Dense(s->A);
+    c_float* At_dev = csrMats2Dense(s->At);
+    c_float rho = 1.0f/(*s->h_rho); //-(rho)^-1
+    size_t mat_size = s->m + s->n;
+
+    c_float *mat_dev = (c_float*)malloc(mat_size * mat_size * sizeof(c_float));
+    memset(mat_dev, 0.0f, mat_size * mat_size * sizeof(c_float));
+
+    mergeMatrices(mat_dev, P_dev, mat_size, mat_size, s->P->m, s->P->n, 0,0);
+    mergeMatrices(mat_dev, A_dev, mat_size, mat_size, s->A->m, s->A->n, s->P->m, 0);
+    mergeMatrices(mat_dev, At_dev, mat_size, mat_size, s->At->m, s->At->n, 0, s->P->n);
+    mergeScalar2Matrix(mat_dev, rho, mat_size, mat_size, s->A->m, s->P->m, s->P->n);
+//        for(int i = 0; i<mat_size; i++){
+//            for(int j = 0; j<mat_size; j++){
+//                printf("mat[%d][%d]: %f ", i, j, mat_dev[i * mat_size + j]);
+//            }
+//            printf("\n");
+//        }
+//        printf("\n");
+    /* So far we have extract the A matrix of the linear system */
+    /* The next step is to move the A matrix from cpu to gpu   */
+    c_float *mat_a;
+    checkCudaErrors(cudaMalloc((void**)&mat_a, mat_size * mat_size * sizeof(c_float)));
+    checkCudaErrors(cudaMemcpy(mat_a, mat_dev, mat_size * mat_size * sizeof(c_float), cudaMemcpyHostToDevice));
+
+    c_float *tmp, *rhs_;
+    cudaMalloc((void**)&tmp, sizeof(c_float)*mat_size);
+    rhs_ =  (c_float*)malloc(sizeof(c_float)*mat_size);
+    cudaMemcpy(tmp, rhs, sizeof(c_float)*mat_size, cudaMemcpyDeviceToDevice);
+    cudaMemcpy(rhs_, tmp, sizeof(c_float)*mat_size, cudaMemcpyDeviceToHost);
+    for(int i = 0; i< mat_size; i++){
+        printf("RHS[%d]: %f, ", i, rhs_[i]);
+    }
+    printf("\n");
+    /* Now, we start to solve the linear equation using cuSolver */
+    /* Because the coefficient matrix is symmetrical, we use LDLT method to solve */
+    c_float *x = cuda_ldlt_solve(mat_a, tmp, mat_size); //Calculated but not calculated at all
+    CUDA_CHECK(cudaMemcpy(rhs_, x, sizeof(c_float) * mat_size, cudaMemcpyDeviceToHost));
+    for(int i = 0; i< 2; i++){
+        printf("x[%d]: %f ", i, rhs_[i]);
+    }
+    printf("\n");
+    return 0;
+}
 
 c_int cuda_pcg_alg(cudapcg_solver *s,
                    c_float         eps,

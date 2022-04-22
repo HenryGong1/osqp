@@ -177,6 +177,7 @@ void update_xz_tilde(OSQPSolver *solver, c_int admm_iter) {
 
   // Compute right-hand side
   compute_rhs(solver);
+
 //    c_float* test = malloc(sizeof(c_float)* 5);
 //    test[0] = 1.0f;
 //    cudaMemcpy(test, work->xtilde_view->d_val, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
@@ -1152,5 +1153,7 @@ c_int validate_settings(const OSQPSettings *settings) {
 
   return 0;
 }
+
+
 
 #endif // #ifndef EMBEDDED

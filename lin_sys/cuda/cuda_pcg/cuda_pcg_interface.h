@@ -94,6 +94,7 @@ typedef struct cudapcg_solver_ {
   c_float *d_rho_vec;
   c_float *h_sigma;
   c_float *h_rho;
+  c_float *rhs;
 
   /* PCG iterates */
   c_float *d_x;             ///<  current iterate solution

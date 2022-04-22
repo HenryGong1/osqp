@@ -99,6 +99,7 @@ static void compute_rhs(cudapcg_solver *s,
 }
 
 
+
 /*******************************************************************************
  *                              API Functions                                  *
  *******************************************************************************/
@@ -243,7 +244,7 @@ c_int init_linsys_solver_cudapcg(cudapcg_solver    **sp,
 }
 
 c_int solve_linsys_cudapcg(cudapcg_solver *s,
-                           OSQPVectorf    *b,
+                           OSQPVectorf    *b, //right hand side
                            c_int           admm_iter) {
 
   c_int   pcg_iters;
@@ -252,6 +253,7 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
   /* Compute the RHS of the reduced KKT system and store it in s->d_rhs */
 //    c_float test_1 = 3.0f;
 //    test[0] = 1.0f;
+    int test_ = cuda_LDL_alg(s, b->d_val);
     compute_rhs(s, b->d_val);
 //    CHECK_CUDA(cudaMemcpy(&test, s->d_rhs, 1 * sizeof(c_float), cudaMemcpyDeviceToHost))
 //    for(int i =0 ;i < 1; i++){
@@ -271,15 +273,15 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
 
   /* Copy the first part of the solution to b->d_val */
   cuda_vec_copy_d2d(b->d_val, s->d_x, s->n);
-//    c_float* test = malloc(sizeof(c_float)* 5);
-//    cudaMemcpy(test, s->d_x, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
-//    for(int i=0; i< 2; i++){
-//        printf(" x_title[%d]: %f ", i, test[i]);
-//    }
-//    printf("\n");
+    c_float* test = malloc(sizeof(c_float)* 5);
+    cudaMemcpy(test, s->d_x, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
+    for(int i=0; i< 2; i++){
+        printf("x %d : %f ", i, test[i]);
+    }
+    printf("\n");
   if (!s->polish) {
     /* Compute d_z = A * d_x */
-    if (s->m) cuda_mat_Axpy(s->A, s->d_x, b->d_val + s->n, 1.0, 0.0);
+    if (s->m) cuda_mat_Axpy(s->A, s->d_x, b->d_val + s->n, 1.0, 0.0);//There is a different.
   }
   else {
     /* Compute yred = (A * d_x - b) / delta */

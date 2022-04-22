@@ -43,7 +43,7 @@ void cuda_pcg_update_precond(cudapcg_solver *s,
                              c_int           A_updated,
                              c_int           R_updated);
 
-
+c_int cuda_LDL_alg(cudapcg_solver *s, c_float* rhs);
 #ifdef __cplusplus
 }
 #endif
