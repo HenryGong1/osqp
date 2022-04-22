@@ -549,9 +549,9 @@ c_int cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
     rhs_ =  (c_float*)malloc(sizeof(c_float)*mat_size);
     cudaMemcpy(tmp, rhs, sizeof(c_float)*mat_size, cudaMemcpyDeviceToDevice);
     cudaMemcpy(rhs_, tmp, sizeof(c_float)*mat_size, cudaMemcpyDeviceToHost);
-    for(int i = 0; i< mat_size; i++){
-        printf("RHS[%d]: %f, ", i, rhs_[i]);
-    }
+//    for(int i = 0; i< mat_size; i++){
+//        printf("RHS[%d]: %f, ", i, rhs_[i]);
+//    }
     printf("\n");
     /* Now, we start to solve the linear equation using cuSolver */
     /* Because the coefficient matrix is symmetrical, we use LDLT method to solve */
