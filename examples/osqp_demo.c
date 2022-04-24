@@ -102,12 +102,16 @@ for(int i = 0; i< 1; i++) {
       printf("Setup Timecost: %f\n ", dur);
       /* Solve Problem */
 
-      start = clock();
+//      start = clock();
       osqp_solve(solver);
-      end = clock();
-      dur = (double) (end - start) / CLOCKS_PER_SEC;
-      printf("Solve Time cost: %f\n ", dur);
+//      end = clock();
+//      dur = (double) (end - start) / CLOCKS_PER_SEC;
+//      printf("Solve Time cost: %f\n ", dur);
 
+    for(int i =0; i<2;i++){
+        printf("%f ", solver->solution->x[i]);
+    }
+    printf("\n");
       /* Clean workspace */
       start = clock();
       osqp_cleanup(solver);
