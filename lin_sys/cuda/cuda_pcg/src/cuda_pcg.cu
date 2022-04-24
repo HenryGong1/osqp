@@ -556,7 +556,6 @@ c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
     rhs_ =  (c_float*)malloc(sizeof(c_float)*mat_size);
     cudaMemcpy(tmp, rhs, sizeof(c_float)*mat_size, cudaMemcpyDeviceToDevice);
     cudaMemcpy(rhs_, tmp, sizeof(c_float)*mat_size, cudaMemcpyDeviceToHost);
-    CUDA_CHECK(cudaFree(tmp));
 //    for(int i = 0; i< mat_size; i++){
 //        printf("RHS[%d]: %f, ", i, rhs_[i]);
 //    }
