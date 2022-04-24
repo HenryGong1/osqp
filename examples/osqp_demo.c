@@ -77,7 +77,7 @@ int main(void) {
 
   /* Exitflag */
 
-for(int i = 0; i< 1; i++) {
+for(int i = 0; i< 10; i++) {
   /* Workspace, settings, matrices */
   OSQPSolver   *solver;
   OSQPSettings *settings;

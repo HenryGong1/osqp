@@ -169,6 +169,7 @@ c_float* csrMats2Dense(csr *s){
     checkCudaErrors(cudaMalloc((void **)&ptr, sizeof(P->val) * P->nnz));
     checkCudaErrors(cudaMemcpy(ptr, P->val, P->nnz * sizeof(c_float), cudaMemcpyDeviceToDevice));
     checkCudaErrors(cudaMemcpy(vals, ptr, P->nnz * sizeof(c_float), cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaFree(ptr));
 //    for(int i = 0; i<P->nnz; i++){
 //        printf("CSR val: %f ", vals[i]);
 //    }
@@ -180,13 +181,15 @@ c_float* csrMats2Dense(csr *s){
 
     checkCudaErrors(cudaMemcpy(rowPtr, P->row_ind, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToDevice));
     checkCudaErrors(cudaMemcpy(&row, rowPtr, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaFree(rowPtr));
 //    for(int i = 0; i<P->nnz; i++){
 //        printf("rowPtr: %d ", row[i]);
 //    }
 //    printf("\n");
     checkCudaErrors(cudaMemcpy(colIdx, P->col_ind, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToDevice));
     checkCudaErrors(cudaMemcpy(&col, colIdx, (P->nnz) * sizeof(c_int), cudaMemcpyDeviceToHost));
-//    for(int i = 0; i<P->nnz; i++){
+    checkCudaErrors(cudaFree(colIdx));
+    //    for(int i = 0; i<P->nnz; i++){
 //        printf("colIdx: %d ", col[i]);
 //    }
 //    printf("\n");
@@ -470,12 +473,13 @@ c_int linearSolverLDL(cusolverDnHandle_t handle,
     test = (c_float*)malloc(sizeof(c_float) * n *n);
     CUDA_CHECK(cudaMemcpy(tmp, A, sizeof(c_float) * n *n, cudaMemcpyDeviceToDevice));
     CUDA_CHECK(cudaMemcpy(test, tmp, sizeof(c_float) * n *n, cudaMemcpyDeviceToHost));
-    for(int i = 0; i <n ;i++){
-        for(int j = 0; j < n; j++){
-            printf("A[%d][%d]: %f", i, j, test[i*n+j]);
-        }
-        printf("\n");
-    }
+    CUDA_CHECK(cudaFree(tmp));
+//    for(int i = 0; i <n ;i++){
+//        for(int j = 0; j < n; j++){
+//            printf("A[%d][%d]: %f", i, j, test[i*n+j]);
+//        }
+//        printf("\n");
+//    }
     CUDA_CHECK(cudaMemcpy(x, b, sizeof(c_float)*n, cudaMemcpyDeviceToDevice));
     CUSOLVER_CHECK(cusolverDnSsytrs(handle, oplo, n, 1, A, lda, ipiv, x, n, buffer, bufferSize, info));// calculated but not calculated at all
     CUDA_CHECK(cudaDeviceSynchronize());
@@ -511,12 +515,15 @@ c_float* cuda_ldlt_solve(c_float *A, c_float* b, int m){
 
     c_float *x;
     cudaMalloc((void**)&x, sizeof(c_float)*m);
-//    linearSolverQR(handle, m, A, m, b, x);
-    linearSolverLDL(handle, m, A, m, b, x);
+    linearSolverQR(handle, m, A, m, b, x);
+//    linearSolverLDL(handle, m, A, m, b, x);
     return x;
+    cudaFree(handle);
+    cudaFree(cublasHandle);
+    cudaFree(stream);
 }
 
-c_int cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
+c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
 
     c_float *P_dev = csrMats2Dense(s->P);
     c_float* A_dev = csrMats2Dense(s->A);
@@ -549,19 +556,22 @@ c_int cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
     rhs_ =  (c_float*)malloc(sizeof(c_float)*mat_size);
     cudaMemcpy(tmp, rhs, sizeof(c_float)*mat_size, cudaMemcpyDeviceToDevice);
     cudaMemcpy(rhs_, tmp, sizeof(c_float)*mat_size, cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaFree(tmp));
 //    for(int i = 0; i< mat_size; i++){
 //        printf("RHS[%d]: %f, ", i, rhs_[i]);
 //    }
-    printf("\n");
+//    printf("\n");
     /* Now, we start to solve the linear equation using cuSolver */
     /* Because the coefficient matrix is symmetrical, we use LDLT method to solve */
     c_float *x = cuda_ldlt_solve(mat_a, tmp, mat_size); //Calculated but not calculated at all
-    CUDA_CHECK(cudaMemcpy(rhs_, x, sizeof(c_float) * mat_size, cudaMemcpyDeviceToHost));
-    for(int i = 0; i< 2; i++){
-        printf("x[%d]: %f ", i, rhs_[i]);
-    }
-    printf("\n");
-    return 0;
+//    CUDA_CHECK(cudaMemcpy(rhs_, x, sizeof(c_float) * mat_size, cudaMemcpyDeviceToHost));
+//    for(int i = 0; i< 2; i++){
+//        printf("x[%d]: %f ", i, rhs_[i]);
+//    }
+//    printf("\n");
+    cudaFree(mat_a);
+    cudaFree(tmp);
+    return x;
 }
 
 c_int cuda_pcg_alg(cudapcg_solver *s,

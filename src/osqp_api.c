@@ -510,8 +510,8 @@ c_int osqp_solve(OSQPSolver *solver) {
 #ifdef PRINTING
 
     // Can we print ?
-    can_print = solver->settings->verbose &&
-                ((iter % PRINT_INTERVAL == 0) || (iter == 1));
+    can_print = solver->settings->verbose;// &&
+                //((iter % PRINT_INTERVAL == 0) || (iter == 1));
 
     // NB: We always update info in the first iteration because indirect solvers
     //     use residual values to compute required accuracy of their solution.

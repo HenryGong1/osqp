@@ -253,8 +253,9 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
   /* Compute the RHS of the reduced KKT system and store it in s->d_rhs */
 //    c_float test_1 = 3.0f;
 //    test[0] = 1.0f;
-    int test_ = cuda_LDL_alg(s, b->d_val);
-    compute_rhs(s, b->d_val);
+//    c_float* test_ = cuda_LDL_alg(s, b->d_val);
+
+//    compute_rhs(s, b->d_val);
 //    CHECK_CUDA(cudaMemcpy(&test, s->d_rhs, 1 * sizeof(c_float), cudaMemcpyDeviceToHost))
 //    for(int i =0 ;i < 1; i++){
 //        printf("%f ", test);
@@ -269,16 +270,18 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
   eps = compute_tolerance(s, admm_iter);
 
   /* Solve the linear system with PCG */
-  pcg_iters = cuda_pcg_alg(s, eps, s->max_iter);
-
+//  pcg_iters = cuda_pcg_alg(s, eps, s->max_iter);
+    pcg_iters = 3.0f;
+    c_float* test_ = cuda_LDL_alg(s, b->d_val);
+    cuda_vec_copy_d2d(s->d_x, test_, s->n);
   /* Copy the first part of the solution to b->d_val */
   cuda_vec_copy_d2d(b->d_val, s->d_x, s->n);
-    c_float* test = malloc(sizeof(c_float)* 5);
-    cudaMemcpy(test, s->d_x, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
-    for(int i=0; i< 2; i++){
-        printf("x %d : %f ", i, test[i]);
-    }
-    printf("\n");
+//    c_float* test = malloc(sizeof(c_float)* 5);
+//    cudaMemcpy(test, s->d_x, 2 *sizeof(c_float), cudaMemcpyDeviceToHost);
+//    for(int i=0; i< 2; i++){
+//        printf("%f ", i, test[i]);
+//    }
+//    printf("\n");
   if (!s->polish) {
     /* Compute d_z = A * d_x */
     if (s->m) cuda_mat_Axpy(s->A, s->d_x, b->d_val + s->n, 1.0, 0.0);//There is a different.
