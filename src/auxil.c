@@ -7,11 +7,20 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
+#include <cuda_lin_alg.h>
 #include "../algebra_types.h"
 /***********************************************************
 * Auxiliary functions needed to compute ADMM iterations * *
 ***********************************************************/
 #if EMBEDDED != 1
+
+#define CUDA_CHECK(err)                                                                            \
+    do {                                                                                           \
+        cudaError_t err_ = (err);                                                                  \
+        if (err_ != cudaSuccess) {                                                                 \
+            printf("CUDA error %d at %s:%d\n", err_, __FILE__, __LINE__);                          \
+        }                                                                                          \
+    } while (0)
 
 c_float compute_rho_estimate(OSQPSolver *solver) {
 
@@ -169,6 +178,41 @@ static void compute_rhs(OSQPSolver *solver) {
                            1.0, work->z_prev,
                            -work->rho_inv, work->y);
   }
+}
+
+c_int update_ztilde(OSQPSolver *solver, const c_float* z){
+    /*z^{k+1} = z^{k} + \rho^{-1} * (v - y)*/
+    size_t size = solver->work->data->m;
+    c_float *tmp = (c_float*)malloc(sizeof(c_float)* size);
+//    memset(tmp, 1.0, sizeof(c_float) * size);
+//    cudaMemcpy(tmp, z_tilde, sizeof(c_float)*size, cudaMemcpyDeviceToHost);
+//    for(int i =0 ;i < size; i++){
+//        printf("%f ", tmp[i]);
+//    }
+//    printf("\n");
+
+    OSQPWorkspace *work = solver->work;
+    c_float *v = work->xz_tilde->d_val + work->data->n;
+    for(int i =0; i <size; i++){
+        tmp[i] = 1.0f;
+    }
+    printf("\n");
+    CUDA_CHECK(cudaMemcpy(tmp, v, sizeof(c_float)*size, cudaMemcpyDeviceToHost));
+    for(int i =0 ;i < size; i++){
+        printf("%f ", tmp[i]);
+    }
+    printf("\n");
+    /* v -= y*/
+    cuda_vec_add_scaled(v,v,work->y->d_val, 1.0, -1.0, size);
+    c_float rho_inv = work->rho_inv;
+    /*~z^{k+1} = z^{k} + \rho^{-1} * v */
+    cuda_vec_add_scaled(v, v, z, rho_inv, 1.0, size);
+    CUDA_CHECK(cudaMemcpy(tmp, v, sizeof(c_float)*size, cudaMemcpyDeviceToHost));
+    for(int i =0 ;i < size; i++){
+        printf("%f ", tmp[i]);
+    }
+    printf("\n");
+    return 0;
 }
 
 void update_xz_tilde(OSQPSolver *solver, c_int admm_iter) {

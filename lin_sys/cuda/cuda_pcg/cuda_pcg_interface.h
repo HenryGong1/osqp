@@ -161,7 +161,6 @@ c_int update_linsys_solver_rho_vec_cudapcg(cudapcg_solver    *s,
                                            const OSQPVectorf *rho_vec,
                                            c_float            rho_sc);
 
-
 #ifdef __cplusplus
 }
 #endif

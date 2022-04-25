@@ -76,9 +76,12 @@ int main(void) {
   c_int m = 3;
 
   /* Exitflag */
-
-for(int i = 0; i< 1; i++) {
+    clock_t start, end;
+    double dur;
+    start = clock();
+for(int i = 0; i< 1000; i++) {
   /* Workspace, settings, matrices */
+  printf("---------------%d------------\n", i);
   OSQPSolver   *solver;
   OSQPSettings *settings;
   csc *P = malloc(sizeof(csc));
@@ -93,13 +96,13 @@ for(int i = 0; i< 1; i++) {
       settings = (OSQPSettings *) malloc(sizeof(OSQPSettings));
       if (settings) osqp_set_default_settings(settings);
       settings->polish = 1;
-      clock_t start, end;
+
       /* Setup workspace */
-      start = clock();
+
       exitflag = osqp_setup(&solver, P, q, A, l, u, m, n, settings);
-      end = clock();
-      double dur = (double) (end - start) / CLOCKS_PER_SEC;
-      printf("Setup Timecost: %f\n ", dur);
+//      end = clock();
+
+//      printf("Setup Timecost: %f\n ", dur);
       /* Solve Problem */
 
 //      start = clock();
@@ -113,15 +116,15 @@ for(int i = 0; i< 1; i++) {
     }
     printf("\n");
       /* Clean workspace */
-      start = clock();
+//      start = clock();
       osqp_cleanup(solver);
       free(A);
       free(P);
       free(settings);
-      end = clock();
-      dur = (double) (end - start) / CLOCKS_PER_SEC;
-      printf("Free Time cost: %f\n ", dur);
+//      end = clock();
   }
-
+    end = clock();
+    dur = (double) (end - start) / CLOCKS_PER_SEC;
+    printf("Test time cost: %f\n ", dur);
   return exitflag;
 }
