@@ -27,6 +27,8 @@
 #include <cusolverDn.h>
 #include <stdio.h>
 #include <vector>
+#include <cstdio>
+
 #ifdef __cplusplus
 extern "C" {extern CUDA_Handle_t *CUDA_handle;}
 #endif
@@ -177,14 +179,24 @@ c_float* csrMats2Dense(csr *s){
     return mat;
 }
 
-__global__ void csrMerge2Dense(csr *s, c_float* dense, int m, int n, int offset_x, int offset_y){
+void csrMerge2Dense(csr *s, c_float* dense, int m, int n, int offset_x, int offset_y){
+    int nnz = s->nnz;
+    int *row = s->row_ind;
+    int *col = s->col_ind;
+    c_float *val = s->val;
+    int pos_x, pos_y;
+    for(int i = 0; i<nnz; i++){
+        pos_x = (row[i] + offset_x) * n;
+        pos_y = col[i] + offset_y;
+        checkCudaErrors(cudaMemcpy(dense+(pos_x+ pos_y), val+i, sizeof(c_float), cudaMemcpyDeviceToDevice));
+        printf("%d", i);
+    }
+    return;
+}
+
+__global__ void vecMerge2Dense(c_float *vec, c_float* dense, int m, int n, int offset_x, int offset_y){
     int id = blockDim.x * blockIdx.x + threadIdx.x;
-    int row = s->row_ind[id];
-    int col = s->col_ind[id];
-    c_float value = s->val[id];
-    int pos_x = (row + offset_x) * n;
-    int pos_y = col + offset_y;
-    dense[pos_x + pos_y] = value;
+    dense[(id + offset_x) * n + (offset_y + id)] = *vec;
 }
 /**
  * This function performs assignments from source matrix to target matrix
@@ -501,11 +513,31 @@ c_float* cuda_ldlt_solve(c_float *A, c_float* b, int m){
 
 __host__ c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
 
+
+    size_t mat_size = s->m + s->n;
+
+//    c_float* test, *test_;
+//    test_ = (c_float*)malloc(sizeof(c_float) * mat_size * mat_size);
+//    memset(test_, 0, sizeof(c_float) * mat_size * mat_size);
+//
+//    checkCudaErrors(cudaMalloc((void**)&test, sizeof(c_float) * mat_size * mat_size));
+////    csrMerge2Dense<<<1, s->P->nnz, s->P->nnz * sizeof(c_float)>>>(s->P, test, mat_size, mat_size, 0, 0);
+//    csrMerge2Dense(s->P, test, mat_size, mat_size, 0, 0);
+//    checkCudaErrors(cudaDeviceSynchronize());
+//    checkCudaErrors(cudaMemcpy(test_, test, sizeof(c_float) * mat_size * mat_size, cudaMemcpyDeviceToHost));
+//    for(int i =0; i<mat_size;i++){
+//        for(int j = 0; j<mat_size; j++){
+//            printf("M[%d][%d]: %f ", i, j, test_[i * mat_size + j]);
+//        }
+//        printf("\n");
+//    }
+//    printf("\n");
+
     c_float *P_dev = csrMats2Dense(s->P);
     c_float* A_dev = csrMats2Dense(s->A);
     c_float* At_dev = csrMats2Dense(s->At);
     c_float rho = -1.0f/(*s->h_rho); //-(rho)^-1
-    size_t mat_size = s->m + s->n;
+
 
     c_float *mat_dev = (c_float*)malloc(mat_size * mat_size * sizeof(c_float));
     memset(mat_dev, 0.0f, mat_size * mat_size * sizeof(c_float));

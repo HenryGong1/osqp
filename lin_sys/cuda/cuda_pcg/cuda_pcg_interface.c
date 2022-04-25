@@ -261,7 +261,7 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
 //        printf("rhs: %f", b_[i]);
 //    }
 //    printf("\n");
-//    compute_rhs(s, b->d_val);
+    compute_rhs(s, b->d_val);
 //    CHECK_CUDA(cudaMemcpy(&test, s->d_rhs, 1 * sizeof(c_float), cudaMemcpyDeviceToHost))
 //    for(int i =0 ;i < 1; i++){
 //        printf("%f ", test);
@@ -276,11 +276,11 @@ c_int solve_linsys_cudapcg(cudapcg_solver *s,
   eps = compute_tolerance(s, admm_iter);
 
   /* Solve the linear system with PCG */
-//  pcg_iters = cuda_pcg_alg(s, eps, s->max_iter);
-    pcg_iters = 3.0f;
-    c_float* test_ = cuda_LDL_alg(s, b->d_val);
-    cuda_vec_copy_d2d(s->d_x, test_, s->n);
-    cudaFree(test_);
+  pcg_iters = cuda_pcg_alg(s, eps, s->max_iter);
+//    pcg_iters = 3.0f;
+//    c_float* test_ = cuda_LDL_alg(s, b->d_val);
+//    cuda_vec_copy_d2d(s->d_x, test_, s->n);
+//    cudaFree(test_);
   /* Copy the first part of the solution to b->d_val */
     cuda_vec_copy_d2d(b->d_val, s->d_x, s->n);
   if (!s->polish) {
