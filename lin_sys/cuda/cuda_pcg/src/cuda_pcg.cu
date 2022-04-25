@@ -179,24 +179,43 @@ c_float* csrMats2Dense(csr *s){
     return mat;
 }
 
-void csrMerge2Dense(csr *s, c_float* dense, int m, int n, int offset_x, int offset_y){
-    int nnz = s->nnz;
-    int *row = s->row_ind;
-    int *col = s->col_ind;
-    c_float *val = s->val;
-    int pos_x, pos_y;
-    for(int i = 0; i<nnz; i++){
-        pos_x = (row[i] + offset_x) * n;
-        pos_y = col[i] + offset_y;
-        checkCudaErrors(cudaMemcpy(dense+(pos_x+ pos_y), val+i, sizeof(c_float), cudaMemcpyDeviceToDevice));
-        printf("%d", i);
-    }
+//__global__ void csrMerge2Dense(csr *s, c_float* dense, int m, int n, int offset_x, int offset_y){
+//    extern __shared__ c_float shm_data[];
+//    int id = blockDim.x * blockIdx.x + threadIdx.x;
+//
+////    int nnz = s->nnz;
+////    if(id>nnz) return;
+//    int row = s->row_ind[id];
+//    int col = s->col_ind[id];
+//    shm_data[id] = s->val[id];
+//    __syncthreads();
+////    int pos_x = row+offset_x;
+////    int pos_y = col+offset_y;
+////
+////    *(dense+pos_x * n + pos_y) = shm_data[id];
+//    return;
+//}
+__global__ void csrMerge2Dense(c_float *val, int* row_ind, int* col_ind,
+                                 c_float* dense, int m, int n, int offset_x, int offset_y){
+    extern __shared__ c_float shm_data[];
+    int id = blockDim.x * blockIdx.x + threadIdx.x;
+
+//    int nnz = s->nnz;
+//    if(id>nnz) return;
+    int row = row_ind[id];
+    int col = col_ind[id];
+    shm_data[id] = val[id];
+    __syncthreads();
+    int pos_x = row+offset_x;
+    int pos_y = col+offset_y;
+//
+    *(dense+pos_x * n + pos_y) = shm_data[id];
     return;
 }
 
-__global__ void vecMerge2Dense(c_float *vec, c_float* dense, int m, int n, int offset_x, int offset_y){
+__global__ void vecMerge2Dense(c_float vec, c_float* dense, int m, int n, int offset_x, int offset_y){
     int id = blockDim.x * blockIdx.x + threadIdx.x;
-    dense[(id + offset_x) * n + (offset_y + id)] = *vec;
+    dense[(id + offset_x) * n + (offset_y + id)] = vec;
 }
 /**
  * This function performs assignments from source matrix to target matrix
@@ -327,10 +346,11 @@ int linearSolverQR(
         const c_float *Acopy,
         int lda,
         const c_float *b,
-        c_float *x)
+        c_float *x,
+        int& bufferSize)
 {
-    cublasHandle_t cublasHandle = NULL; // used in residual evaluation
-    int bufferSize = 0;
+//    cublasHandle_t cublasHandle = NULL; // used in residual evaluation
+//    int bufferSize = 0;
     int *info = NULL;
     c_float *buffer = NULL;
 //    c_float *A = NULL;
@@ -338,12 +358,12 @@ int linearSolverQR(
     int h_info = 0;
     const float one = 1.0;
 
-    CUBLAS_CHECK(cublasCreate(&cublasHandle));
+//    CUBLAS_CHECK(cublasCreate(&cublasHandle));
 
-    CUSOLVER_CHECK(cusolverDnSgeqrf_bufferSize(handle, n, n, (float*)Acopy, lda, &bufferSize));
+    if(bufferSize<0) CUSOLVER_CHECK(cusolverDnSgeqrf_bufferSize(handle, n, n, (float*)Acopy, lda, &bufferSize));
 
     CUDA_CHECK(cudaMalloc(&info, sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&buffer, sizeof(c_float)*bufferSize));
+    CUDA_CHECK(cudaMalloc(&buffer, sizeof(c_float)*(bufferSize)));
 //    CUDA_CHECK(cudaMalloc(&A, sizeof(c_float)*lda*n));
     CUDA_CHECK(cudaMalloc ((void**)&tau, sizeof(c_float)*n));
 
@@ -383,7 +403,7 @@ int linearSolverQR(
 
     // x = R \ Q^T*b
     CUBLAS_CHECK(cublasStrsm(
-            cublasHandle,
+            CUDA_handle->cublasHandle,
             CUBLAS_SIDE_LEFT,
             CUBLAS_FILL_MODE_UPPER,
             CUBLAS_OP_N,
@@ -397,7 +417,7 @@ int linearSolverQR(
             n));
     CUDA_CHECK(cudaDeviceSynchronize());
 
-    if (cublasHandle) { CUBLAS_CHECK(cublasDestroy(cublasHandle)); }
+//    if (cublasHandle) { CUBLAS_CHECK(cublasDestroy(cublasHandle)); }
     if (info  ) { CUDA_CHECK(cudaFree(info  )); }
     if (buffer) { CUDA_CHECK(cudaFree(buffer)); }
 //    if (A     ) { CUDA_CHECK(cudaFree(A)); }
@@ -494,36 +514,50 @@ c_int linearSolverLDL(cusolverDnHandle_t handle,
 * @return solved answer: x
 */
 c_float* cuda_ldlt_solve(c_float *A, c_float* b, int m){
-    cusolverDnHandle_t handle = NULL;
+//    cusolverDnHandle_t handle = NULL;
 //    cublasHandle_t cublasHandle = NULL; // used in residual evaluation
 //    cudaStream_t stream = NULL;
 
-    CUSOLVER_CHECK(cusolverDnCreate(&handle));
+//    CUSOLVER_CHECK(cusolverDnCreate(&handle));
 //    CUBLAS_CHECK(cublasCreate(&cublasHandle));
 //    CUDA_CHECK(cudaStreamCreate(&stream));
 //    CUSOLVER_CHECK(cusolverDnSetStream(handle, stream));
 
     c_float *x;
+    int buffer = -1;
     cudaMalloc((void**)&x, sizeof(c_float)*m);
-    linearSolverQR(handle, m, A, m, b, x);
+    linearSolverQR(CUDA_handle->cusolverDnHandle, m, A, m, b, x, buffer);
 //    linearSolverLDL(handle, m, A, m, b, x);
-    CUSOLVER_CHECK(cusolverDnDestroy(handle));
+//    CUSOLVER_CHECK(cusolverDnDestroy(handle));
     return x;
 }
 
-__host__ c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
+c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
 
-
+    c_float rho = -1.0f/(*s->h_rho); //-(rho)^-1
     size_t mat_size = s->m + s->n;
 
-//    c_float* test, *test_;
-//    test_ = (c_float*)malloc(sizeof(c_float) * mat_size * mat_size);
-//    memset(test_, 0, sizeof(c_float) * mat_size * mat_size);
-//
-//    checkCudaErrors(cudaMalloc((void**)&test, sizeof(c_float) * mat_size * mat_size));
-////    csrMerge2Dense<<<1, s->P->nnz, s->P->nnz * sizeof(c_float)>>>(s->P, test, mat_size, mat_size, 0, 0);
-//    csrMerge2Dense(s->P, test, mat_size, mat_size, 0, 0);
-//    checkCudaErrors(cudaDeviceSynchronize());
+    c_float* test, *test_;
+    test_ = (c_float*)malloc(sizeof(c_float) * mat_size * mat_size);
+    memset(test_, 0, sizeof(c_float) * mat_size * mat_size);
+
+    checkCudaErrors(cudaMalloc((void**)&test, sizeof(c_float) * mat_size * mat_size));
+    checkCudaErrors(cudaMemset(test, 0,sizeof(c_float) * mat_size * mat_size));
+//    csrMerge2Dense<<<1, s->P->nnz, s->P->nnz * sizeof(c_float)>>>(s->P, test, mat_size, mat_size, 0, 0);
+    c_float* val = s->P->val;
+    int *row_ind = s->P->row_ind, *col_ind = s->P->col_ind;
+    csrMerge2Dense<<<1, s->P->nnz, s->P->nnz * sizeof(c_float)>>>(val, row_ind, col_ind, test, mat_size, mat_size, 0, 0);
+
+    val = s->A->val;
+    row_ind = s->A->row_ind, col_ind = s->A->col_ind;
+    csrMerge2Dense<<<1, s->A->nnz, s->A->nnz * sizeof(c_float)>>>(val, row_ind, col_ind, test, mat_size, mat_size, s->P->m, 0);
+    val = s->At->val;
+    row_ind = s->At->row_ind, col_ind = s->At->col_ind;
+    csrMerge2Dense<<<1, s->At->nnz, s->At->nnz * sizeof(c_float)>>>(val, row_ind, col_ind, test, mat_size, mat_size, 0, s->P->n);
+
+    vecMerge2Dense<<<1, s->A->m>>>(rho, test, mat_size, mat_size, s->P->m, s->P->n);
+//    vecMerge2Dense(c_float *vec, c_float* dense, int m, int n, int offset_x, int offset_y)
+    checkCudaErrors(cudaDeviceSynchronize());
 //    checkCudaErrors(cudaMemcpy(test_, test, sizeof(c_float) * mat_size * mat_size, cudaMemcpyDeviceToHost));
 //    for(int i =0; i<mat_size;i++){
 //        for(int j = 0; j<mat_size; j++){
@@ -533,19 +567,19 @@ __host__ c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
 //    }
 //    printf("\n");
 
-    c_float *P_dev = csrMats2Dense(s->P);
-    c_float* A_dev = csrMats2Dense(s->A);
-    c_float* At_dev = csrMats2Dense(s->At);
-    c_float rho = -1.0f/(*s->h_rho); //-(rho)^-1
-
-
-    c_float *mat_dev = (c_float*)malloc(mat_size * mat_size * sizeof(c_float));
-    memset(mat_dev, 0.0f, mat_size * mat_size * sizeof(c_float));
-
-    mergeMatrices(mat_dev, P_dev, mat_size, mat_size, s->P->m, s->P->n, 0,0);
-    mergeMatrices(mat_dev, A_dev, mat_size, mat_size, s->A->m, s->A->n, s->P->m, 0);
-    mergeMatrices(mat_dev, At_dev, mat_size, mat_size, s->At->m, s->At->n, 0, s->P->n);
-    mergeScalar2Matrix(mat_dev, rho, mat_size, mat_size, s->A->m, s->P->m, s->P->n);
+//    c_float *P_dev = csrMats2Dense(s->P);
+//    c_float* A_dev = csrMats2Dense(s->A);
+//    c_float* At_dev = csrMats2Dense(s->At);
+////    c_float rho = -1.0f/(*s->h_rho); //-(rho)^-1
+//
+//
+//    c_float *mat_dev = (c_float*)malloc(mat_size * mat_size * sizeof(c_float));
+//    memset(mat_dev, 0.0f, mat_size * mat_size * sizeof(c_float));
+//
+//    mergeMatrices(mat_dev, P_dev, mat_size, mat_size, s->P->m, s->P->n, 0,0);
+//    mergeMatrices(mat_dev, A_dev, mat_size, mat_size, s->A->m, s->A->n, s->P->m, 0);
+//    mergeMatrices(mat_dev, At_dev, mat_size, mat_size, s->At->m, s->At->n, 0, s->P->n);
+//    mergeScalar2Matrix(mat_dev, rho, mat_size, mat_size, s->A->m, s->P->m, s->P->n);
 //        for(int i = 0; i<mat_size; i++){
 //            for(int j = 0; j<mat_size; j++){
 //                printf("mat[%d][%d]: %f ", i, j, mat_dev[i * mat_size + j]);
@@ -555,9 +589,9 @@ __host__ c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
 //        printf("\n");
     /* So far we have extract the A matrix of the linear system */
     /* The next step is to move the A matrix from cpu to gpu   */
-    c_float *mat_a;
-    checkCudaErrors(cudaMalloc((void**)&mat_a, mat_size * mat_size * sizeof(c_float)));
-    checkCudaErrors(cudaMemcpy(mat_a, mat_dev, mat_size * mat_size * sizeof(c_float), cudaMemcpyHostToDevice));
+//    c_float *mat_a;
+//    checkCudaErrors(cudaMalloc((void**)&mat_a, mat_size * mat_size * sizeof(c_float)));
+//    checkCudaErrors(cudaMemcpy(mat_a, mat_dev, mat_size * mat_size * sizeof(c_float), cudaMemcpyHostToDevice));
 
 //    c_float *tmp, *rhs_;
 //    cudaMalloc((void**)&tmp, sizeof(c_float)*mat_size);
@@ -570,18 +604,20 @@ __host__ c_float* cuda_LDL_alg(cudapcg_solver *s, c_float *rhs){
 //    printf("\n");
     /* Now, we start to solve the linear equation using cuSolver */
     /* Because the coefficient matrix is symmetrical, we use LDLT method to solve */
-    c_float *x = cuda_ldlt_solve(mat_a, rhs, mat_size); //Calculated but not calculated at all
+//    c_float *x = cuda_ldlt_solve(mat_a, rhs, mat_size); //Calculated but not calculated at all
+    c_float *x = cuda_ldlt_solve(test, rhs, mat_size); //Calculated but not calculated at all
 //    CUDA_CHECK(cudaMemcpy(rhs_, x, sizeof(c_float) * mat_size, cudaMemcpyDeviceToHost));
 //    for(int i = 0; i< 2; i++){
 //        printf("x[%d]: %f ", i, rhs_[i]);
 //    }
 //    printf("\n");
-    CUDA_CHECK(cudaFree(mat_a));
-    free(mat_dev);
-    free(P_dev);
-    free(A_dev);
-    free(At_dev);
+//    CUDA_CHECK(cudaFree(mat_a));
+//    free(mat_dev);
+//    free(P_dev);
+//    free(A_dev);
+//    free(At_dev);
 //    cudaFree(tmp);
+    CUDA_CHECK(cudaFree(test));
     return x;
 }
 

@@ -38,6 +38,7 @@ CUDA_Handle_t* cuda_init_libs(int cuda_device) {
   checkCudaErrors(cudaSetDevice(cuda_device));
   checkCudaErrors(cusparseCreate(&CUDA_handle->cusparseHandle));
   checkCudaErrors(cublasCreate(&CUDA_handle->cublasHandle));
+  checkCudaErrors(cusolverDnCreate(&CUDA_handle->cusolverDnHandle));
   checkCudaErrors(cudaMalloc(&CUDA_handle->d_index, sizeof(int)));
 
   return CUDA_handle;

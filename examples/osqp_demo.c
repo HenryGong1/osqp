@@ -79,7 +79,7 @@ int main(void) {
     clock_t start, end;
     double dur;
     start = clock();
-for(int i = 0; i< 30; i++) {
+for(int i = 0; i< 100; i++) {
   /* Workspace, settings, matrices */
   printf("---------------%d------------\n", i);
   OSQPSolver   *solver;

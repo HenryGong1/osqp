@@ -20,6 +20,7 @@
 
 #include <cusparse_v2.h>
 #include <cublas_v2.h>
+#include <cusolverDn.h>
 
 # ifdef __cplusplus
 extern "C" {
@@ -28,6 +29,7 @@ extern "C" {
 typedef struct {
   cublasHandle_t    cublasHandle;
   cusparseHandle_t  cusparseHandle;
+  cusolverDnHandle_t cusolverDnHandle;
   int              *d_index;
 } CUDA_Handle_t;
 
