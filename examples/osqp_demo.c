@@ -1,6 +1,6 @@
 #include "osqp.h"
 #include <stdlib.h>
-
+#include <time.h>
 int main(void) {
 
   /* Load problem data */
@@ -20,33 +20,39 @@ int main(void) {
 
   /* Exitflag */
   c_int exitflag;
-
+clock_t start, end;
+double dur;
+    start = clock();
   /* Workspace, settings, matrices */
-  OSQPSolver   *solver;
-  OSQPSettings *settings;
-  csc *P = malloc(sizeof(csc));
-  csc *A = malloc(sizeof(csc));
+  for(int i = 0; i< 100; i++) {
+      OSQPSolver *solver;
+      OSQPSettings *settings;
+      csc *P = malloc(sizeof(csc));
+      csc *A = malloc(sizeof(csc));
 
-  /* Populate matrices */
-  csc_set_data(A, m, n, A_nnz, A_x, A_i, A_p);
-  csc_set_data(P, n, n, P_nnz, P_x, P_i, P_p);
+      /* Populate matrices */
+      csc_set_data(A, m, n, A_nnz, A_x, A_i, A_p);
+      csc_set_data(P, n, n, P_nnz, P_x, P_i, P_p);
 
-  /* Set default settings */
-  settings = (OSQPSettings *)malloc(sizeof(OSQPSettings));
-  if (settings) osqp_set_default_settings(settings);
-  settings->polish = 1;
+      /* Set default settings */
+      settings = (OSQPSettings *) malloc(sizeof(OSQPSettings));
+      if (settings) osqp_set_default_settings(settings);
+      settings->polish = 1;
 
-  /* Setup workspace */
-  exitflag = osqp_setup(&solver, P, q, A, l, u, m, n, settings);
+      /* Setup workspace */
+      exitflag = osqp_setup(&solver, P, q, A, l, u, m, n, settings);
 
-  /* Solve Problem */
-  osqp_solve(solver);
+      /* Solve Problem */
+      osqp_solve(solver);
 
-  /* Clean workspace */
-  osqp_cleanup(solver);
-  free(A);
-  free(P);
-  free(settings);
-
+      /* Clean workspace */
+      osqp_cleanup(solver);
+      free(A);
+      free(P);
+      free(settings);
+  }
+  end = clock();
+  dur = (double)(end - start) / CLOCKS_PER_SEC;
+  printf("Duration: %f", dur);
   return exitflag;
 }
